@@ -1,233 +1,155 @@
-// main.js
-import { map, isGhostWall } from "../ressources/map.js";
+
+import { ghosts } from "../sprites/sprites.js";
+import { isGhostWall } from "../ressources/map.js";
+
+import { gameData } from "./gameState.js";
+
 import {
-  player,
-  ghosts,
-  resetSprites,
-  updatePlayer,
-} from "../sprites/sprites.js";
-import { updateGhosts } from "../sprites/ghostAI.js";
+    initGame,
+    updateGame,
+} from "./game.js";
+
 import {
-  processGameTriggers,
-  initializeCherry,
-  initializeSpeedBoost,
-} from "./triggerProcessor.js";
-import { drawGame } from "./renderer.js";
+    resizeCanvas,
+    setupCanvasEvents,
+    renderCanvas,
+} from "./canvas.js";
 
-const canvas = document.getElementById("gameCanvas");
-const ctx = canvas.getContext("2d");
+import { setupControls } from "./controls.js";
 
-const scoreDisplay = document.getElementById("score-display");
-const livesDisplay = document.getElementById("lives-display");
-const itemsDisplay = document.getElementById("items-display");
-const overlay = document.getElementById("overlay");
-const overlayTitle = document.getElementById("overlay-title");
-const overlayDesc = document.getElementById("overlay-desc");
-const actionBtn = document.getElementById("action-btn");
+import {
+    actionBtn,
+    soloBtn,
+    coopBtn,
+    hideOverlay,
+    showModeSelection,
+} from "./ui.js";
 
-const gameData = {
-  score: 0,
-  lives: 3,
-  gameState: "START",
-  items: [],
-  powerPellets: [],
-  TOTAL_ITEMS: 0,
-  map: map,
+import { TARGET_FPS } from "../constants/constant.js";
 
-  cherry: {
-    x: 0,
-    y: 0,
-    visible: true,
-    image: null,
-  },
-  cherry: {
-    x: 0,
-    y: 0,
-    visible: true,
-    image: null,
-  },
-
-  speedBoost: {
-    x: 0,
-    y: 0,
-    visible: false,
-  },
-};
+// ======================================
+// GAME SETTINGS
+// ======================================
 
 let animationFrameId = null;
-let tileSize = 20
-const cherryImage = new Image();
-cherryImage.src = "../PM_Cherry.png";
-gameData.cherry.image = cherryImage;
-const TARGET_FPS = 60;
+
 const timeStep = 1000 / TARGET_FPS;
+
 let lastTime = 0;
 let accumulator = 0;
 
-function resizeCanvas() {
-  const container = canvas.parentElement;
-  canvas.width = container.clientWidth;
-  tileSize = canvas.width / map[0].length;
-  canvas.height = tileSize * map.length;
-  container.style.height = `${canvas.height}px`;
-}
-
-window.addEventListener("resize", resizeCanvas);
-window.addEventListener("orientationchange", () =>
-  setTimeout(resizeCanvas, 200),
-);
-
-function setDirection(dx, dy) {
-  player.nextDx = dx;
-  player.nextDy = dy;
-}
-
-window.addEventListener("keydown", (e) => {
-  if (e.key === "ArrowUp" || e.key === "w" || e.key === "W")
-    setDirection(0, -1);
-  if (e.key === "ArrowDown" || e.key === "s" || e.key === "S")
-    setDirection(0, 1);
-  if (e.key === "ArrowLeft" || e.key === "a" || e.key === "A")
-    setDirection(-1, 0);
-  if (e.key === "ArrowRight" || e.key === "d" || e.key === "D")
-    setDirection(1, 0);
-});
-
-document
-  .getElementById("btn-up")
-  .addEventListener("click", () => setDirection(0, -1));
-document
-  .getElementById("btn-down")
-  .addEventListener("click", () => setDirection(0, 1));
-document
-  .getElementById("btn-left")
-  .addEventListener("click", () => setDirection(-1, 0));
-document
-  .getElementById("btn-right")
-  .addEventListener("click", () => setDirection(1, 0));
-
-function updateUI(data = gameData) {
-  scoreDisplay.textContent = data.score;
-  livesDisplay.textContent = data.lives;
-  const collectedCount = data.TOTAL_ITEMS - data.items.length;
-  itemsDisplay.textContent = `${collectedCount}/${data.TOTAL_ITEMS}`;
-}
-
-function resetPlayerPosition() {
-  player.x = 9;
-  player.y = 5;
-  player.dx = 0;
-  player.dy = 0;
-  player.nextDx = 0;
-  player.nextDy = 0;
-}
-
-function isPlayerInSafeZone() {
-  const safeTiles = [
-    { x: 9, y: 5 },
-    { x: 10, y: 5 },
-    { x: 9, y: 6 },
-    { x: 10, y: 6 },
-  ];
-
-  return safeTiles.some(tile =>
-    Math.round(player.x) === tile.x &&
-    Math.round(player.y) === tile.y
-  );
-}
-
-function initGame() {
-  gameData.score = 0;
-  gameData.lives = 3;
-  resetSprites();
-  resetPlayerPosition();
-
-  gameData.map = map;
-  gameData.cherry.visible = true;
-  gameData.items = [];
-  gameData.powerPellets = [];
-  for (let r = 0; r < map.length; r++) {
-    for (let c = 0; c < map[r].length; c++) {
-      if (map[r][c] === 0) {
-        gameData.items.push({ x: c, y: r });
-      } else if (map[r][c] === 2) {
-        gameData.powerPellets.push({ x: c, y: r });
-      }
-      gameData.TOTAL_ITEMS = gameData.items.length;
-    }
-  }
-  gameData.TOTAL_ITEMS = gameData.items.length;
-
-  initializeCherry(gameData);
-  initializeSpeedBoost(gameData);
-
-  updateUI(gameData);
-}
-
-function update() {
-  if (gameData.gameState !== "PLAYING") return;
-
-  updatePlayer();
-  updateGhosts();
-  processGameTriggers(gameData, {
-  updateUI,
-  showOverlay,
-  resetPlayerPosition,
-  isPlayerInSafeZone,
-  });   
-}
-
-function draw() {
-  drawGame(ctx, tileSize, gameData);
-}
+// ======================================
+// GAME LOOP
+// ======================================
 
 function gameLoop(timestamp) {
-  if (gameData.gameState !== "PLAYING") return;
-  const deltaTime = timestamp - lastTime;
-  lastTime = timestamp;
+    if (gameData.gameState !== "PLAYING") return;
 
-  accumulator += deltaTime;
+    const deltaTime = timestamp - lastTime;
+    lastTime = timestamp;
 
-  while (accumulator >= timeStep) {
-    update();
-    accumulator -= timeStep;
-  }
+    accumulator += deltaTime;
 
-  draw();
+    while (accumulator >= timeStep) {
+        updateGame();
+        accumulator -= timeStep;
+    }
 
-  animationFrameId = requestAnimationFrame(gameLoop);
+    renderCanvas(gameData);
+
+    if (gameData.gameState === "PLAYING") {
+        animationFrameId = requestAnimationFrame(gameLoop);
+    }
 }
 
-function showOverlay(title, desc, btnText) {
-  overlayTitle.textContent = title;
-  overlayDesc.textContent = desc;
-  actionBtn.textContent = btnText;
-  overlay.classList.remove("hidden");
-  overlay.style.opacity = "1";
-  overlay.style.pointerEvents = "auto";
+// ======================================
+// START GAME
+// ======================================
+
+function startGame(mode) {
+    cancelAnimationFrame(animationFrameId);
+
+    initGame(mode);
+
+    gameData.gameState = "PLAYING";
+
+    hideOverlay();
+
+    lastTime = performance.now();
+    accumulator = 0;
+
+    animationFrameId = requestAnimationFrame(gameLoop);
 }
 
-function hideOverlay() {
-  overlay.style.opacity = "0";
-  overlay.style.pointerEvents = "none";
+// ======================================
+// RESUME GAME
+// ======================================
+
+function resumeGame() {
+    gameData.gameState = "PLAYING";
+
+    hideOverlay();
+
+    lastTime = performance.now();
+    accumulator = 0;
+
+    cancelAnimationFrame(animationFrameId);
+    animationFrameId = requestAnimationFrame(gameLoop);
 }
 
-actionBtn.addEventListener("click", () => {
-  hideOverlay();
-  initGame();
-  gameData.gameState = "PLAYING";
-  cancelAnimationFrame(animationFrameId);
+// ======================================
+// ACTION BUTTON
+// ======================================
 
-  lastTime = performance.now();
-  accumulator = 0;
+function handleActionButton() {
+    if (gameData.gameState === "PAUSED") {
+        resumeGame();
+        return;
+    }
 
-  animationFrameId = requestAnimationFrame(gameLoop);
-});
+    if (
+        gameData.gameState === "VICTORY" ||
+        gameData.gameState === "GAMEOVER"
+    ) {
+        gameData.gameState = "START";
+        showModeSelection();
+    }
+}
 
-window.onload = () => {
-  resizeCanvas();
-  draw();
-};
+// ======================================
+// INITIALIZE APPLICATION
+// ======================================
+
+function initializeApplication() {
+    resizeCanvas();
+
+    setupCanvasEvents();
+    setupControls();
+
+    renderCanvas(gameData);
+
+    soloBtn.addEventListener("click", () => {
+        startGame("SOLO");
+    });
+
+    coopBtn.addEventListener("click", () => {
+        startGame("COOP");
+    });
+
+    actionBtn.addEventListener("click", handleActionButton);
+
+    showModeSelection();
+}
+
+// ======================================
+// DEBUGGING
+// ======================================
 
 window.ghostsDebug = ghosts;
 window.mapDebug = isGhostWall;
+
+// ======================================
+// START APPLICATION
+// ======================================
+
+window.addEventListener("load", initializeApplication);

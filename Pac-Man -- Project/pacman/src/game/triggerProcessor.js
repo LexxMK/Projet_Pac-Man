@@ -1,80 +1,151 @@
-// collisions.js
+
+// ======================================
+// IMPORTS
+// ======================================
 
 import {
-  player,
-  ghosts,
-  getFrightenedTimer,
-  setFrightenedTimer,
-  resetSprites,
-  activateSpeedBoost,
+    player,
+    player2,
+    ghosts,
+    getFrightenedTimer,
+    setFrightenedTimer,
+    resetSprites,
+    activateSpeedBoost,
 } from "../sprites/sprites.js";
 
 import {
-  maps,
-  currentLevelIndex,
-  switchLevel,
-  getCurrentLevel,
+    maps,
+    currentLevelIndex,
+    switchLevel,
+    getCurrentLevel,
 } from "../ressources/map.js";
+
+import {
+    COLLECTION_DISTANCE_SQUARED,
+    SAFE_ZONE_TILES,
+    BONUS_SPAWN_EXCLUSION_ZONE,
+    GHOST_NEARBY_DISTANCE_SQUARED,
+    PLAYER_NEARBY_DISTANCE_SQUARED,
+    POINTS_NORMAL_PELLET,
+    POINTS_POWER_PELLET,
+    POINTS_CHERRY,
+    POINTS_GHOST,
+    FRIGHTENED_DURATION
+} from "../constants/constant.js";
+
+import {
+    TileType
+} from "../constants/gameEnums.js";
+
+// ======================================
+// DISTANCE CHECK
+// ======================================
+
+function isCollected(x1, y1, x2, y2) {
+    const dx = x1 - x2;
+    const dy = y1 - y2;
+
+    return (
+        dx * dx + dy * dy <
+        COLLECTION_DISTANCE_SQUARED
+    );
+}
+
+// ======================================
+// ACTIVE PLAYERS
+// ======================================
+
+function getActivePlayers(gameData) {
+    if (gameData.gameMode === "COOP") {
+        return [player, player2];
+    }
+
+    return [player];
+}
+
+// ======================================
+// SAFE ZONE
+// ======================================
+
+function isInSafeZone(targetPlayer) {
+    return SAFE_ZONE_TILES.some(tile =>
+        Math.round(targetPlayer.x) === tile.x &&
+        Math.round(targetPlayer.y) === tile.y
+    );
+}
+
+// ======================================
+// BONUS SPAWN EXCLUSION ZONE
+// ======================================
+
+function isInBonusExclusionZone(x, y) {
+    return (
+        x >= BONUS_SPAWN_EXCLUSION_ZONE.minX &&
+        x <= BONUS_SPAWN_EXCLUSION_ZONE.maxX &&
+        y >= BONUS_SPAWN_EXCLUSION_ZONE.minY &&
+        y <= BONUS_SPAWN_EXCLUSION_ZONE.maxY
+    );
+}
 
 // ======================================
 // CHERRY SPAWNING
 // ======================================
 
-
 function spawnCherry(gameData, currentMap) {
-  const validPositions = [];
+    const validPositions = [];
 
-  for (let r = 0; r < currentMap.length; r++) {
-    for (let c = 0; c < currentMap[r].length; c++) {
-      const tile = currentMap[r][c];
+    for (let r = 0; r < currentMap.length; r++) {
+        for (let c = 0; c < currentMap[r].length; c++) {
+            const tile = currentMap[r][c];
 
-      // Only walkable tiles
-      if (tile !== 0 && tile !== 4) continue;
+            if (
+                tile !== TileType.EMPTY &&
+                tile !== TileType.GHOST_WALL
+            ) continue;
 
-      // Avoid the ghost safe zone
-      if (c >= 7 && c <= 11 && r >= 4 && r <= 7) {
-        continue;
-      }
+            if (isInBonusExclusionZone(c, r)) {
+                continue;
+            }
 
-      // Avoid power pellets
-      const hasPowerPellet = gameData.powerPellets.some(
-        pellet => pellet.x === c && pellet.y === r
-      );
+            const hasPowerPellet = gameData.powerPellets.some(
+                pellet => pellet.x === c && pellet.y === r
+            );
 
-      if (hasPowerPellet) continue;
+            if (hasPowerPellet) continue;
 
-      // Avoid ghosts
-      const ghostNearby = ghosts.some(
-        ghost => Math.hypot(ghost.x - c, ghost.y - r) < 3
-      );
+            const ghostNearby = ghosts.some(
+                ghost =>
+                    isCollected(ghost.x, ghost.y, c, r) ||
+                    (ghost.x - c) ** 2 + (ghost.y - r) ** 2 <
+                    GHOST_NEARBY_DISTANCE_SQUARED
+            );
 
-      if (ghostNearby) continue;
+            if (ghostNearby) continue;
 
-      validPositions.push({ x: c, y: r });
+            validPositions.push({ x: c, y: r });
+        }
     }
-  }
 
-  if (validPositions.length === 0) {
-    gameData.cherry.visible = false;
-    return;
-  }
+    if (validPositions.length === 0) {
+        gameData.cherry.visible = false;
+        return;
+    }
 
-  const position =
-    validPositions[Math.floor(Math.random() * validPositions.length)];
+    const position =
+        validPositions[Math.floor(Math.random() * validPositions.length)];
 
-  gameData.cherry.x = position.x;
-  gameData.cherry.y = position.y;
-  gameData.cherry.visible = true;
+    gameData.cherry.x = position.x;
+    gameData.cherry.y = position.y;
+    gameData.cherry.visible = true;
 
-  // Remove a normal pellet underneath the cherry
-  gameData.items = gameData.items.filter(
-    item => item.x !== position.x || item.y !== position.y
-  );
+    gameData.items = gameData.items.filter(
+        item => item.x !== position.x || item.y !== position.y
+    );
 }
 
 export function initializeCherry(gameData) {
-  spawnCherry(gameData, gameData.map);
-  initializeSpeedBoost(gameData);
+    spawnCherry(gameData, gameData.map);
+    initializeSpeedBoost(gameData);
 }
 
 // ======================================
@@ -82,76 +153,81 @@ export function initializeCherry(gameData) {
 // ======================================
 
 function spawnSpeedBoost(gameData, currentMap) {
-  const validPositions = [];
+    const validPositions = [];
 
-  for (let r = 0; r < currentMap.length; r++) {
-    for (let c = 0; c < currentMap[r].length; c++) {
-      const tile = currentMap[r][c];
+    for (let r = 0; r < currentMap.length; r++) {
+        for (let c = 0; c < currentMap[r].length; c++) {
+            const tile = currentMap[r][c];
 
-      // Only walkable tiles
-      if (tile !== 0 && tile !== 4) continue;
+            if (
+                tile !== TileType.EMPTY &&
+                tile !== TileType.GHOST_WALL
+            ) continue;
 
-      // Avoid ghost starting area
-      if (c >= 7 && c <= 11 && r >= 4 && r <= 7) continue;
+            if (isInBonusExclusionZone(c, r)) continue;
 
-      // Avoid cherry
-      if (
-        gameData.cherry.visible &&
-        gameData.cherry.x === c &&
-        gameData.cherry.y === r
-      ) continue;
+            if (
+                gameData.cherry.visible &&
+                gameData.cherry.x === c &&
+                gameData.cherry.y === r
+            ) continue;
 
-      // Avoid power pellets
-      if (gameData.powerPellets.some(
-        p => p.x === c && p.y === r
-      )) continue;
+            if (gameData.powerPellets.some(
+                p => p.x === c && p.y === r
+            )) continue;
 
-      // Avoid player
-      if (Math.hypot(player.x - c, player.y - r) < 3) continue;
+            const playerDx = player.x - c;
+            const playerDy = player.y - r;
 
-      validPositions.push({ x: c, y: r });
+            if (
+                playerDx * playerDx + playerDy * playerDy <
+                PLAYER_NEARBY_DISTANCE_SQUARED
+            ) {
+                continue;
+            }
+
+            validPositions.push({ x: c, y: r });
+        }
     }
-  }
 
-  if (validPositions.length === 0) {
-    gameData.speedBoost.visible = false;
-    return;
-  }
+    if (validPositions.length === 0) {
+        gameData.speedBoost.visible = false;
+        return;
+    }
 
-  const position =
-    validPositions[Math.floor(Math.random() * validPositions.length)];
+    const position =
+        validPositions[Math.floor(Math.random() * validPositions.length)];
 
-  gameData.speedBoost.x = position.x;
-  gameData.speedBoost.y = position.y;
-  gameData.speedBoost.visible = true;
+    gameData.speedBoost.x = position.x;
+    gameData.speedBoost.y = position.y;
+    gameData.speedBoost.visible = true;
 }
 
 export function initializeSpeedBoost(gameData) {
-  spawnSpeedBoost(gameData, gameData.map);
+    spawnSpeedBoost(gameData, gameData.map);
 }
-
 
 // ======================================
 // INITIALIZE LEVEL COLLECTIBLES
 // ======================================
 
 function initializeLevelCollectibles(gameData, currentMap) {
-  gameData.items = [];
-  gameData.powerPellets = [];
+    gameData.items = [];
+    gameData.powerPellets = [];
 
-  for (let r = 0; r < currentMap.length; r++) {
-    for (let c = 0; c < currentMap[r].length; c++) {
-      const tile = currentMap[r][c];
+    for (let r = 0; r < currentMap.length; r++) {
+        for (let c = 0; c < currentMap[r].length; c++) {
+            const tile = currentMap[r][c];
 
-      if (tile === 0) {
-        gameData.items.push({ x: c, y: r });
-      } else if (tile === 2) {
-        gameData.powerPellets.push({ x: c, y: r });
-      }
+            if (tile === TileType.EMPTY) {
+                gameData.items.push({ x: c, y: r });
+            } else if (tile === TileType.POWER_PELLET) {
+                gameData.powerPellets.push({ x: c, y: r });
+            }
+        }
     }
-  }
 
-  gameData.TOTAL_ITEMS = gameData.items.length;
+    gameData.TOTAL_ITEMS = gameData.items.length;
 }
 
 // ======================================
@@ -159,143 +235,207 @@ function initializeLevelCollectibles(gameData, currentMap) {
 // ======================================
 
 export function processGameTriggers(gameData, callbacks) {
-  const {
-    updateUI,
-    showOverlay,
-    resetPlayerPosition,
-    isPlayerInSafeZone,
-  } = callbacks;
+    const {
+        updateUI,
+        showOverlay,
+        resetPlayerPosition,
+    } = callbacks;
 
-  // 1. NORMAL PELLETS
-  gameData.items = gameData.items.filter((item) => {
-    if (Math.hypot(player.x - item.x, player.y - item.y) < 0.4) {
-      gameData.score += 10;
-      updateUI(gameData);
-      return false;
+    const activePlayers = getActivePlayers(gameData);
+
+    let collectiblesChanged = false;
+
+    // ======================================
+    // 1. NORMAL PELLETS
+    // ======================================
+
+    for (let i = gameData.items.length - 1; i >= 0; i--) {
+        const item = gameData.items[i];
+
+        const collected = activePlayers.some(targetPlayer =>
+            isCollected(targetPlayer.x, targetPlayer.y, item.x, item.y)
+        );
+
+        if (collected) {
+            gameData.score += POINTS_NORMAL_PELLET;
+            gameData.items.splice(i, 1);
+            collectiblesChanged = true;
+        }
     }
 
-    return true;
-  });
+    // ======================================
+    // 2. POWER PELLETS
+    // ======================================
 
-  // 2. POWER PELLETS
-  gameData.powerPellets = gameData.powerPellets.filter((pellet) => {
-    if (Math.hypot(player.x - pellet.x, player.y - pellet.y) < 0.4) {
-      gameData.score += 50;
-      setFrightenedTimer(350);
-      updateUI(gameData);
-      return false;
+    for (let i = gameData.powerPellets.length - 1; i >= 0; i--) {
+        const pellet = gameData.powerPellets[i];
+
+        const collected = activePlayers.some(targetPlayer =>
+            isCollected(targetPlayer.x, targetPlayer.y, pellet.x, pellet.y)
+        );
+
+        if (collected) {
+            gameData.score += POINTS_POWER_PELLET;
+            setFrightenedTimer(FRIGHTENED_DURATION);
+
+            gameData.powerPellets.splice(i, 1);
+            collectiblesChanged = true;
+        }
     }
 
-    return true;
-  });
+    // ======================================
+    // 3. CHERRY
+    // ======================================
 
-  // 3. CHERRY
-  if (gameData.cherry && gameData.cherry.visible) {
-    if (
-      Math.hypot(player.x - gameData.cherry.x, player.y - gameData.cherry.y) <
-      0.4
-    ) {
-      gameData.score += 100;
-      gameData.cherry.visible = false;
-      updateUI(gameData);
-    }
-  }
+    if (gameData.cherry?.visible) {
+        const collected = activePlayers.some(targetPlayer =>
+            isCollected(
+                targetPlayer.x,
+                targetPlayer.y,
+                gameData.cherry.x,
+                gameData.cherry.y
+            )
+        );
 
-  // 4. SPEED BOOST
-  if (gameData.speedBoost && gameData.speedBoost.visible) {
-    if (
-      Math.hypot(
-        player.x - gameData.speedBoost.x,
-        player.y - gameData.speedBoost.y
-      ) < 0.4
-    ) {
-      activateSpeedBoost();
-      gameData.speedBoost.visible = false;
-    }
-  }
-
-
-  // 5. LEVEL COMPLETION
-  if (gameData.items.length === 0) {
-    const nextIndex = currentLevelIndex + 1;
-
-    if (nextIndex < maps.length) {
-      // Switch level
-      switchLevel(nextIndex);
-
-      // Update map
-      gameData.map = maps[nextIndex];
-
-      // Reset player and ghosts
-      resetSprites();
-      resetPlayerPosition();
-
-      // Create collectibles for new level
-      initializeLevelCollectibles(gameData, gameData.map);
-
-      // Spawn cherry after initializing collectibles
-      spawnCherry(gameData, gameData.map);
-
-      updateUI(gameData);
-
-      showOverlay(
-        `LEVEL ${getCurrentLevel()}!`,
-        "Get ready for the next maze!",
-        "CONTINUE",
-      );
-
-      gameData.gameState = "PAUSED";
-    } else {
-      // All levels completed
-      gameData.gameState = "VICTORY";
-
-      showOverlay(
-        "VICTORY!",
-        `You cleared all levels! Final Score: ${gameData.score}`,
-        "PLAY AGAIN",
-      );
+        if (collected) {
+            gameData.score += POINTS_CHERRY;
+            gameData.cherry.visible = false;
+            collectiblesChanged = true;
+        }
     }
 
-    return;
-  }
+    // ======================================
+    // 4. SPEED BOOST
+    // ======================================
 
-  // 6. GHOST COLLISIONS
-  if (!isPlayerInSafeZone()) {
-    ghosts.forEach((ghost) => {
-      if (Math.hypot(player.x - ghost.x, player.y - ghost.y) < 0.5) {
-        if (getFrightenedTimer() > 0) {
-          // Eat frightened ghost
-          gameData.score += 200;
+    if (gameData.speedBoost?.visible) {
+        const collected = activePlayers.some(targetPlayer =>
+            isCollected(
+                targetPlayer.x,
+                targetPlayer.y,
+                gameData.speedBoost.x,
+                gameData.speedBoost.y
+            )
+        );
 
-          ghost.x = ghost.homeX;
-          ghost.y = ghost.homeY;
-          ghost.dx = 0;
-          ghost.dy = 0;
+        if (collected) {
+            activateSpeedBoost();
+            gameData.speedBoost.visible = false;
+        }
+    }
 
-          updateUI(gameData);
-        } else {
-          // Lose a life
-          gameData.lives--;
-          updateUI(gameData);
+    if (collectiblesChanged) {
+        updateUI(gameData);
+    }
 
-          if (gameData.lives <= 0) {
-            gameData.gameState = "GAMEOVER";
+    // ======================================
+    // 5. LEVEL COMPLETION
+    // ======================================
 
-            showOverlay(
-              "GAME OVER",
-              `The ghosts caught you! Final Score: ${gameData.score}`,
-              "TRY AGAIN",
-            );
-          } else {
+    if (gameData.items.length === 0) {
+        const nextIndex = currentLevelIndex + 1;
+
+        if (nextIndex < maps.length) {
+            switchLevel(nextIndex);
+
+            gameData.map = maps[nextIndex];
+
+            resetSprites();
             resetPlayerPosition();
 
-            // Respawn cherry after losing a life
-            spawnCherry(gameData, gameData.map);
-            initializeSpeedBoost(gameData);
+            initializeLevelCollectibles(gameData, gameData.map);
 
-          }
+            spawnCherry(gameData, gameData.map);
+
+            updateUI(gameData);
+
+            showOverlay(
+                `LEVEL ${getCurrentLevel()}!`,
+                "Get ready for the next maze!",
+                "CONTINUE",
+            );
+
+            gameData.gameState = "PAUSED";
+        } else {
+            gameData.gameState = "VICTORY";
+
+            showOverlay(
+                "VICTORY!",
+                `You cleared all levels! Final Score: ${gameData.score}`,
+                "PLAY AGAIN",
+            );
         }
-      }
-    });
-  }
+
+        return;
+    }
+
+    // ======================================
+    // 6. GHOST COLLISIONS
+    // ======================================
+
+    let lifeLost = false;
+    let ghostEaten = false;
+
+    for (const targetPlayer of activePlayers) {
+
+        // Each player has their own safe-zone protection.
+        if (isInSafeZone(targetPlayer)) {
+            continue;
+        }
+
+        for (const ghost of ghosts) {
+
+            if (!isCollected(
+                targetPlayer.x,
+                targetPlayer.y,
+                ghost.x,
+                ghost.y
+            )) {
+                continue;
+            }
+
+            if (getFrightenedTimer() > 0) {
+                // Eat frightened ghost
+                gameData.score += POINTS_GHOST;
+
+                ghost.x = ghost.homeX;
+                ghost.y = ghost.homeY;
+                ghost.dx = 0;
+                ghost.dy = 0;
+                ghost.decisionLocked = false;
+
+                ghostEaten = true;
+
+            } else {
+                // Lose only one life per collision event
+                gameData.lives--;
+                lifeLost = true;
+
+                if (gameData.lives <= 0) {
+                    gameData.gameState = "GAMEOVER";
+
+                    showOverlay(
+                        "GAME OVER",
+                        `The ghosts caught you! Final Score: ${gameData.score}`,
+                        "TRY AGAIN",
+                    );
+                } else {
+                    resetPlayerPosition();
+
+                    spawnCherry(gameData, gameData.map);
+                    initializeSpeedBoost(gameData);
+                }
+
+                break;
+            }
+        }
+
+        if (lifeLost) {
+            break;
+        }
+    }
+
+    if (ghostEaten || lifeLost) {
+        updateUI(gameData);
+    }
 }

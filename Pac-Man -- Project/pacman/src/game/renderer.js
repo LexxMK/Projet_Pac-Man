@@ -1,117 +1,220 @@
 
-// renderer.js
-
 import { map } from "../ressources/map.js";
 import { drawSprites } from "../sprites/spriteDrawer.js";
 
-export function drawGame(ctx, tileSize, gameData) {
-  ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+import {
+    MAZE_WALL_COLOR,
+    MAZE_WALL_BORDER_COLOR,
+    GHOST_WALL_COLOR,
+    GHOST_WALL_BORDER_COLOR,
+    MAZE_BORDER_WIDTH,
+    PELLET_COLOR,
+    PELLET_RADIUS_MULTIPLIER,
+    POWER_PELLET_COLOR,
+    POWER_PELLET_RADIUS_MULTIPLIER,
+    POWER_PELLET_BLINK_INTERVAL,
+    SPEED_BOOST_COLOR,
+    SPEED_BOOST_BORDER_COLOR,
+    SPEED_BOOST_BORDER_WIDTH,
+    SPEED_BOOST_BOLT_POINTS
+} from "../constants/constant.js";
 
-  const currentMap = gameData.map || map;
+// ======================================
+// MAZE CACHE
+// ======================================
 
-  // 1. DRAW MAZE WALLS
-  for (let r = 0; r < currentMap.length; r++) {
-    for (let c = 0; c < currentMap[r].length; c++) {
-      if (currentMap[r][c] === 1) {
-        ctx.fillStyle = "#1e3a8a";
-        ctx.fillRect(c * tileSize, r * tileSize, tileSize, tileSize);
+let mazeCanvas = null;
+let cachedMap = null;
+let cachedTileSize = null;
 
-        ctx.strokeStyle = "#3b82f6";
-        ctx.lineWidth = 1;
-        ctx.strokeRect(c * tileSize, r * tileSize, tileSize, tileSize);
+function createMazeCache(ctx, tileSize, currentMap) {
+    const width = ctx.canvas.width;
+    const height = ctx.canvas.height;
 
-      } else if (currentMap[r][c] === 4) {
-        ctx.fillStyle = "#065f46";
-        ctx.fillRect(c * tileSize, r * tileSize, tileSize, tileSize);
+    mazeCanvas = document.createElement("canvas");
+    mazeCanvas.width = width;
+    mazeCanvas.height = height;
 
-        ctx.strokeStyle = "#34d399";
-        ctx.lineWidth = 1;
-        ctx.strokeRect(c * tileSize, r * tileSize, tileSize, tileSize);
-      }
+    const mazeCtx = mazeCanvas.getContext("2d");
+
+    for (let r = 0; r < currentMap.length; r++) {
+        for (let c = 0; c < currentMap[r].length; c++) {
+            if (currentMap[r][c] === 1) {
+                mazeCtx.fillStyle = MAZE_WALL_COLOR;
+
+                mazeCtx.fillRect(
+                    c * tileSize,
+                    r * tileSize,
+                    tileSize,
+                    tileSize
+                );
+
+                mazeCtx.strokeStyle = MAZE_WALL_BORDER_COLOR;
+                mazeCtx.lineWidth = MAZE_BORDER_WIDTH;
+
+                mazeCtx.strokeRect(
+                    c * tileSize,
+                    r * tileSize,
+                    tileSize,
+                    tileSize
+                );
+
+            } else if (currentMap[r][c] === 4) {
+                mazeCtx.fillStyle = GHOST_WALL_COLOR;
+
+                mazeCtx.fillRect(
+                    c * tileSize,
+                    r * tileSize,
+                    tileSize,
+                    tileSize
+                );
+
+                mazeCtx.strokeStyle = GHOST_WALL_BORDER_COLOR;
+                mazeCtx.lineWidth = MAZE_BORDER_WIDTH;
+
+                mazeCtx.strokeRect(
+                    c * tileSize,
+                    r * tileSize,
+                    tileSize,
+                    tileSize
+                );
+            }
+        }
     }
-  }
 
-  // 2. DRAW NORMAL PELLETS
-  gameData.items.forEach(item => {
-    if (
-      gameData.cherry?.visible &&
-      item.x === gameData.cherry.x &&
-      item.y === gameData.cherry.y
-    ) return;
-
-    ctx.fillStyle = "#fde047";
-    ctx.beginPath();
-    ctx.arc(
-      (item.x + 0.5) * tileSize,
-      (item.y + 0.5) * tileSize,
-      tileSize * 0.18,
-      0,
-      Math.PI * 2
-    );
-    ctx.fill();
-  });
-
-  // 3. DRAW POWER PELLETS
-  gameData.powerPellets.forEach(pellet => {
-    if (
-      gameData.cherry?.visible &&
-      pellet.x === gameData.cherry.x &&
-      pellet.y === gameData.cherry.y
-    ) return;
-
-    if (Math.floor(Date.now() / 200) % 2 === 0) {
-      ctx.fillStyle = "#f43f5e";
-      ctx.beginPath();
-      ctx.arc(
-        (pellet.x + 0.5) * tileSize,
-        (pellet.y + 0.5) * tileSize,
-        tileSize * 0.35,
-        0,
-        Math.PI * 2
-      );
-      ctx.fill();
-    }
-  });
-
-  // 4. DRAW CHERRY
-  if (
-    gameData.cherry &&
-    gameData.cherry.visible &&
-    gameData.cherry.image &&
-    gameData.cherry.image.complete &&
-    gameData.cherry.image.naturalWidth > 0
-  ) {
-    ctx.drawImage(
-      gameData.cherry.image,
-      gameData.cherry.x * tileSize,
-      gameData.cherry.y * tileSize,
-      tileSize,
-      tileSize
-    );
-  }
-
-  // 5. DRAW SPEED BOOST
-if (gameData.speedBoost && gameData.speedBoost.visible) {
-  const x = gameData.speedBoost.x * tileSize;
-  const y = gameData.speedBoost.y * tileSize;
-
-  ctx.fillStyle = "#facc15";
-  ctx.strokeStyle = "#ffffff";
-  ctx.lineWidth = 1.5;
-
-  ctx.beginPath();
-  ctx.moveTo(x + tileSize * 0.58, y + tileSize * 0.08);
-  ctx.lineTo(x + tileSize * 0.25, y + tileSize * 0.55);
-  ctx.lineTo(x + tileSize * 0.48, y + tileSize * 0.55);
-  ctx.lineTo(x + tileSize * 0.35, y + tileSize * 0.92);
-  ctx.lineTo(x + tileSize * 0.78, y + tileSize * 0.38);
-  ctx.lineTo(x + tileSize * 0.54, y + tileSize * 0.38);
-  ctx.closePath();
-
-  ctx.fill();
-  ctx.stroke();
+    cachedMap = currentMap;
+    cachedTileSize = tileSize;
 }
 
-  // 6. DRAW PLAYER AND GHOSTS
-  drawSprites(ctx, tileSize);
+// ======================================
+// DRAW GAME
+// ======================================
+
+export function drawGame(ctx, tileSize, gameData) {
+    const currentMap = gameData.map || map;
+
+    ctx.clearRect(
+        0,
+        0,
+        ctx.canvas.width,
+        ctx.canvas.height
+    );
+
+    // Rebuild the maze only when necessary
+    if (
+        !mazeCanvas ||
+        cachedMap !== currentMap ||
+        cachedTileSize !== tileSize ||
+        mazeCanvas.width !== ctx.canvas.width ||
+        mazeCanvas.height !== ctx.canvas.height
+    ) {
+        createMazeCache(ctx, tileSize, currentMap);
+    }
+
+    // 1. DRAW CACHED MAZE
+
+    ctx.drawImage(mazeCanvas, 0, 0);
+
+    // 2. DRAW NORMAL PELLETS
+
+    ctx.fillStyle = PELLET_COLOR;
+
+    gameData.items.forEach(item => {
+        if (
+            gameData.cherry?.visible &&
+            item.x === gameData.cherry.x &&
+            item.y === gameData.cherry.y
+        ) return;
+
+        ctx.beginPath();
+
+        ctx.arc(
+            (item.x + 0.5) * tileSize,
+            (item.y + 0.5) * tileSize,
+            tileSize * PELLET_RADIUS_MULTIPLIER,
+            0,
+            Math.PI * 2
+        );
+
+        ctx.fill();
+    });
+
+    // 3. DRAW POWER PELLETS
+
+    if (
+        Math.floor(Date.now() / POWER_PELLET_BLINK_INTERVAL) % 2 === 0
+    ) {
+        ctx.fillStyle = POWER_PELLET_COLOR;
+
+        gameData.powerPellets.forEach(pellet => {
+            if (
+                gameData.cherry?.visible &&
+                pellet.x === gameData.cherry.x &&
+                pellet.y === gameData.cherry.y
+            ) return;
+
+            ctx.beginPath();
+
+            ctx.arc(
+                (pellet.x + 0.5) * tileSize,
+                (pellet.y + 0.5) * tileSize,
+                tileSize * POWER_PELLET_RADIUS_MULTIPLIER,
+                0,
+                Math.PI * 2
+            );
+
+            ctx.fill();
+        });
+    }
+
+    // 4. DRAW CHERRY
+
+    if (
+        gameData.cherry &&
+        gameData.cherry.visible &&
+        gameData.cherry.image &&
+        gameData.cherry.image.complete &&
+        gameData.cherry.image.naturalWidth > 0
+    ) {
+        ctx.drawImage(
+            gameData.cherry.image,
+            gameData.cherry.x * tileSize,
+            gameData.cherry.y * tileSize,
+            tileSize,
+            tileSize
+        );
+    }
+
+    // 5. DRAW SPEED BOOST
+
+    if (gameData.speedBoost?.visible) {
+        const x = gameData.speedBoost.x * tileSize;
+        const y = gameData.speedBoost.y * tileSize;
+
+        ctx.fillStyle = SPEED_BOOST_COLOR;
+        ctx.strokeStyle = SPEED_BOOST_BORDER_COLOR;
+        ctx.lineWidth = SPEED_BOOST_BORDER_WIDTH;
+
+        ctx.beginPath();
+
+        SPEED_BOOST_BOLT_POINTS.forEach((point, index) => {
+            const pointX = x + tileSize * point.x;
+            const pointY = y + tileSize * point.y;
+
+            if (index === 0) {
+                ctx.moveTo(pointX, pointY);
+            } else {
+                ctx.lineTo(pointX, pointY);
+            }
+        });
+
+        ctx.closePath();
+
+        ctx.fill();
+        ctx.stroke();
+    }
+
+    // 6. DRAW PLAYER AND GHOSTS
+
+    drawSprites(ctx, tileSize);
 }

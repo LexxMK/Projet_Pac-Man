@@ -1,14 +1,34 @@
 
-import { isGhostWall, map } from '../ressources/map.js';
+import {
+    isGhostWall,
+    map,
+    currentLevelIndex
+} from '../ressources/map.js';
 
 import {
     player,
+    player2,
     ghosts,
     frightenedTimer,
     setFrightenedTimer
 } from './sprites.js';
 
+import { gameData } from '../game/gameState.js';
 import { GhostType } from '../constants/gameEnums.js';
+
+import {
+    CLYDE_AMBUSH_DISTANCE,
+    CLYDE_CHASE_DISTANCE,
+    CLYDE_AMBUSH_LOOKAHEAD,
+    PINKY_FORWARD_CHANCE,
+    INKY_LOOKAHEAD,
+    FRIGHTENED_SPEED_MULTIPLIER,
+    GHOST_LEVEL_SPEED_MULTIPLIERS,
+    GHOST_ALIGNMENT_THRESHOLD,
+    GHOST_MOVEMENT_THRESHOLD,
+    SAFE_ZONE_TILES,
+    TUNNEL_ROW
+} from '../constants/constant.js';
 
 // ======================================
 // DIRECTIONS
@@ -22,34 +42,49 @@ const directions = [
 ];
 
 // ======================================
+// SAFE ZONE
+// ======================================
+
+function isPlayerInSafeZone(targetPlayer) {
+    const x = Math.round(targetPlayer.x);
+    const y = Math.round(targetPlayer.y);
+
+    return SAFE_ZONE_TILES.some(
+        tile => tile.x === x && tile.y === y
+    );
+}
+
+// ======================================
 // VALID NEIGHBORS
 // ======================================
 
 function getNeighbors(x, y) {
     const width = map[0].length;
+    const neighbors = [];
 
-    return directions
-        .map(direction => {
-            let nx = x + direction.dx;
-            let ny = y + direction.dy;
+    for (const direction of directions) {
+        let nx = x + direction.dx;
+        let ny = y + direction.dy;
 
-            // Tunnel wrapping for pathfinding
-            if (ny === 7 && nx < 0) {
-                nx = width - 1;
-            }
+        if (ny === TUNNEL_ROW && nx < 0) {
+            nx = width - 1;
+        }
 
-            if (ny === 7 && nx >= width) {
-                nx = 0;
-            }
+        if (ny === TUNNEL_ROW && nx >= width) {
+            nx = 0;
+        }
 
-            return {
+        if (!isGhostWall(nx, ny)) {
+            neighbors.push({
                 x: nx,
                 y: ny,
                 dx: direction.dx,
                 dy: direction.dy
-            };
-        })
-        .filter(next => !isGhostWall(next.x, next.y));
+            });
+        }
+    }
+
+    return neighbors;
 }
 
 // ======================================
@@ -72,16 +107,16 @@ function findPathMove(ghost, targetX, targetY) {
     const visited = new Set();
     visited.add(`${startX},${startY}`);
 
+    let head = 0;
     let bestMove = null;
     let bestDistance = Infinity;
 
-    while (queue.length > 0) {
-        const current = queue.shift();
+    while (head < queue.length) {
+        const current = queue[head++];
 
-        const distance = Math.hypot(
-            current.x - goalX,
-            current.y - goalY
-        );
+        const dx = current.x - goalX;
+        const dy = current.y - goalY;
+        const distance = dx * dx + dy * dy;
 
         if (distance < bestDistance) {
             bestDistance = distance;
@@ -92,10 +127,7 @@ function findPathMove(ghost, targetX, targetY) {
             return current.firstMove;
         }
 
-        const neighbors = getNeighbors(
-            current.x,
-            current.y
-        );
+        const neighbors = getNeighbors(current.x, current.y);
 
         for (const next of neighbors) {
             const key = `${next.x},${next.y}`;
@@ -121,6 +153,64 @@ function findPathMove(ghost, targetX, targetY) {
 }
 
 // ======================================
+// DISTANCE BETWEEN GHOST AND PLAYER
+// ======================================
+
+function getDistanceSquared(ghost, targetPlayer) {
+    let dx = Math.abs(
+        Math.round(ghost.x) - Math.round(targetPlayer.x)
+    );
+
+    const dy = Math.abs(
+        Math.round(ghost.y) - Math.round(targetPlayer.y)
+    );
+
+    if (
+        Math.round(ghost.y) === TUNNEL_ROW &&
+        Math.round(targetPlayer.y) === TUNNEL_ROW
+    ) {
+        dx = Math.min(dx, map[0].length - dx);
+    }
+
+    return dx * dx + dy * dy;
+}
+
+// ======================================
+// SELECT TARGET PLAYER
+// ======================================
+
+function getTargetPlayer(ghost) {
+    const activePlayers = gameData.gameMode === "COOP"
+        ? [player, player2]
+        : [player];
+
+    const availablePlayers = activePlayers.filter(
+        targetPlayer => !isPlayerInSafeZone(targetPlayer)
+    );
+
+    if (availablePlayers.length === 0) {
+        return null;
+    }
+
+    let closestPlayer = availablePlayers[0];
+    let shortestDistance = Infinity;
+
+    for (const targetPlayer of availablePlayers) {
+        const distance = getDistanceSquared(
+            ghost,
+            targetPlayer
+        );
+
+        if (distance < shortestDistance) {
+            shortestDistance = distance;
+            closestPlayer = targetPlayer;
+        }
+    }
+
+    return closestPlayer;
+}
+
+// ======================================
 // SELECT GHOST MOVE
 // ======================================
 
@@ -129,14 +219,14 @@ function selectGhostMove(ghost, legalMoves) {
         return null;
     }
 
-    // Frightened ghosts move randomly
+    // Frightened ghosts move randomly.
     if (frightenedTimer > 0) {
         return legalMoves[
             Math.floor(Math.random() * legalMoves.length)
         ];
     }
 
-    // Pinky wanders
+    // Pinky wanders.
     if (ghost.type === GhostType.WANDER) {
         const forwardMoves = legalMoves.filter(move =>
             move.dx === ghost.dx &&
@@ -145,12 +235,11 @@ function selectGhostMove(ghost, legalMoves) {
 
         if (
             forwardMoves.length > 0 &&
-            Math.random() < 0.75
+            Math.random() < PINKY_FORWARD_CHANCE
         ) {
             return forwardMoves[0];
         }
 
-        // Avoid reversing when possible
         const otherMoves = legalMoves.filter(move =>
             !(move.dx === -ghost.dx &&
               move.dy === -ghost.dy)
@@ -165,15 +254,57 @@ function selectGhostMove(ghost, legalMoves) {
         ];
     }
 
-    // Chase Pac-Man
-    let targetX = player.x;
-    let targetY = player.y;
+    const targetPlayer = getTargetPlayer(ghost);
 
-    // Ambush behavior
-    if (ghost.type === GhostType.AMBUSH) {
-        targetX += player.dx * 2;
-        targetY += player.dy * 2;
+    if (!targetPlayer) {
+        return legalMoves[
+            Math.floor(Math.random() * legalMoves.length)
+        ];
     }
+
+    let targetX = targetPlayer.x;
+    let targetY = targetPlayer.y;
+
+    // ======================================
+    // CLYDE - CHASE AND AMBUSH
+    // ======================================
+
+    if (ghost.type === GhostType.CLYDE) {
+        const distanceSquared = getDistanceSquared(
+            ghost,
+            targetPlayer
+        );
+
+        const ambushDistanceSquared =
+            CLYDE_AMBUSH_DISTANCE * CLYDE_AMBUSH_DISTANCE;
+
+        const chaseDistanceSquared =
+            CLYDE_CHASE_DISTANCE * CLYDE_CHASE_DISTANCE;
+
+        if (distanceSquared < ambushDistanceSquared) {
+            ghost.isRetreating = true;
+        } else if (distanceSquared > chaseDistanceSquared) {
+            ghost.isRetreating = false;
+        }
+
+        if (ghost.isRetreating) {
+            targetX += targetPlayer.dx * CLYDE_AMBUSH_LOOKAHEAD;
+            targetY += targetPlayer.dy * CLYDE_AMBUSH_LOOKAHEAD;
+        }
+    }
+
+    // ======================================
+    // INKY - AMBUSH
+    // ======================================
+
+    if (ghost.type === GhostType.AMBUSH) {
+        targetX += targetPlayer.dx * INKY_LOOKAHEAD;
+        targetY += targetPlayer.dy * INKY_LOOKAHEAD;
+    }
+
+    // ======================================
+    // CHOOSE PATH
+    // ======================================
 
     const pathMove = findPathMove(
         ghost,
@@ -202,45 +333,43 @@ function selectGhostMove(ghost, legalMoves) {
 
 export function updateGhosts() {
 
-    // Frightened timer
     if (frightenedTimer > 0) {
         setFrightenedTimer(frightenedTimer - 1);
     }
 
-    ghosts.forEach(ghost => {
+    const mapWidth = map[0].length;
 
-        const mapWidth = map[0].length;
+    // Get the speed multiplier for the current level.
+    const levelSpeedMultiplier =
+        GHOST_LEVEL_SPEED_MULTIPLIERS[currentLevelIndex] ??
+        GHOST_LEVEL_SPEED_MULTIPLIERS[
+            GHOST_LEVEL_SPEED_MULTIPLIERS.length - 1
+        ];
+
+    ghosts.forEach(ghost => {
 
         const gx = Math.round(ghost.x);
         const gy = Math.round(ghost.y);
 
-        // ======================================
-        // 1. MOVEMENT SPEED
-        // ======================================
+        // Apply level speed and frightened slowdown.
+        const currentSpeed = ghost.speed *
+            levelSpeedMultiplier *
+            (frightenedTimer > 0
+                ? FRIGHTENED_SPEED_MULTIPLIER
+                : 1);
 
-        // Normal speed everywhere, including tunnels
-        const currentSpeed = frightenedTimer > 0
-            ? ghost.speed * 0.6
-            : ghost.speed;
+        const offsetX = ghost.x - gx;
+        const offsetY = ghost.y - gy;
 
-        // ======================================
-        // 2. TILE CENTER DETECTION
-        // ======================================
+        const distanceSquared =
+            offsetX * offsetX + offsetY * offsetY;
 
-        const distanceFromCenter = Math.hypot(
-            ghost.x - gx,
-            ghost.y - gy
-        );
-
-        if (distanceFromCenter > 0.1) {
+        if (distanceSquared > GHOST_MOVEMENT_THRESHOLD) {
             ghost.decisionLocked = false;
         }
 
-        const aligned = distanceFromCenter < 0.05;
-
-        // ======================================
-        // 3. CHOOSE NEW DIRECTION
-        // ======================================
+        const aligned =
+            distanceSquared < GHOST_ALIGNMENT_THRESHOLD;
 
         if (aligned && !ghost.decisionLocked) {
 
@@ -265,18 +394,12 @@ export function updateGhosts() {
             ghost.decisionLocked = true;
         }
 
-        // ======================================
-        // 4. APPLY MOVEMENT
-        // ======================================
-
         ghost.x += ghost.dx * currentSpeed;
         ghost.y += ghost.dy * currentSpeed;
 
-        // ======================================
-        // 5. TUNNEL TELEPORTATION
-        // ======================================
+        // TUNNEL TELEPORTATION
 
-        if (Math.round(ghost.y) === 7) {
+        if (Math.round(ghost.y) === TUNNEL_ROW) {
 
             if (ghost.x < 0) {
                 ghost.x = mapWidth - 1;
@@ -290,4 +413,3 @@ export function updateGhosts() {
         }
     });
 }
-    

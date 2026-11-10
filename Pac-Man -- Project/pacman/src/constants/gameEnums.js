@@ -1,4 +1,19 @@
-// constants/gameEnums.js
+
+// ======================================
+// TILE TYPES
+// ======================================
+
+export const TileType = Object.freeze({
+    EMPTY: 0,
+    WALL: 1,
+    POWER_PELLET: 2,
+    GHOST_HOUSE: 3,
+    GHOST_WALL: 4
+});
+
+// ======================================
+// GHOST STATES
+// ======================================
 
 export const GhostState = Object.freeze({
     NORMAL: 'NORMAL',
@@ -6,11 +21,20 @@ export const GhostState = Object.freeze({
     EATEN: 'EATEN'
 });
 
+// ======================================
+// GHOST TYPES
+// ======================================
+
 export const GhostType = Object.freeze({
     CHASE: 'CHASE',
     WANDER: 'WANDER',
-    AMBUSH: 'AMBUSH'
+    AMBUSH: 'AMBUSH',
+    CLYDE: 'CLYDE'
 });
+
+// ======================================
+// DIRECTIONS
+// ======================================
 
 export const Direction = Object.freeze({
     UP: { dx: 0, dy: -1 },
@@ -20,29 +44,22 @@ export const Direction = Object.freeze({
     NONE: { dx: 0, dy: 0 }
 });
 
-export const GhostRegistry = Object.freeze({
-    BLINKY: {
-        name: 'Blinky',
-        color: '#ef4444',
-        type: GhostType.CHASE,
-        homeX: 18,
-        homeY: 1,
-        speed: 0.08
-    },
-    PINKY: {
-        name: 'Pinky',
-        color: '#ec4899',
-        type: GhostType.WANDER,
-        homeX: 1,
-        homeY: 11,
-        speed: 0.07
-    },
-    INKY: {
-        name: 'Inky',
-        color: '#06b6d4',
-        type: GhostType.AMBUSH,
-        homeX: 18,
-        homeY: 11,
-        speed: 0.075
-    }
-});
+// ======================================
+// GHOST REGISTRY
+// ======================================
+
+import {
+    GHOST_REGISTRY_SETTINGS
+} from './constant.js';
+
+export const GhostRegistry = Object.freeze(
+    Object.fromEntries(
+        Object.entries(GHOST_REGISTRY_SETTINGS).map(([key, ghost]) => [
+            key,
+            Object.freeze({
+                ...ghost,
+                type: GhostType[ghost.type]
+            })
+        ])
+    )
+);
