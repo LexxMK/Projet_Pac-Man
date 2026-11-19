@@ -1,7 +1,7 @@
 
-// ======================================
-// IMPORTS
-// ======================================
+ // ======================================
+ // IMPORTS
+ // ======================================
 
 import {
     player,
@@ -33,9 +33,9 @@ import {
     FRIGHTENED_DURATION
 } from "../constants/constant.js";
 
-import {
-    TileType
-} from "../constants/gameEnums.js";
+import { TileType } from "../constants/gameEnums.js";
+
+import { showLevelIntro } from "./ui.js";
 
 // ======================================
 // DISTANCE CHECK
@@ -349,13 +349,10 @@ export function processGameTriggers(gameData, callbacks) {
 
             updateUI(gameData);
 
-            showOverlay(
-                `LEVEL ${getCurrentLevel()}!`,
-                "Get ready for the next maze!",
-                "CONTINUE",
-            );
-
             gameData.gameState = "PAUSED";
+
+            showLevelIntro(getCurrentLevel());
+
         } else {
             gameData.gameState = "VICTORY";
 

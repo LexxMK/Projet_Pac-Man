@@ -1,5 +1,5 @@
 
-import { map } from "../ressources/map.js";
+import { map, switchLevel } from "../ressources/map.js";
 
 import {
     player,
@@ -64,6 +64,9 @@ export function isPlayerInSafeZone() {
 // ======================================
 
 export function initGame(mode = "SOLO") {
+    // Always start a new game on Level 1
+    switchLevel(0);
+
     gameData.score = 0;
     gameData.lives = STARTING_LIVES;
     gameData.gameMode = mode;

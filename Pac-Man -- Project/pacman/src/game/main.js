@@ -1,6 +1,10 @@
 
 import { ghosts } from "../sprites/sprites.js";
-import { isGhostWall } from "../ressources/map.js";
+import {
+    isGhostWall,
+    map,
+    switchLevel,
+} from "../ressources/map.js";
 
 import { gameData } from "./gameState.js";
 
@@ -23,18 +27,13 @@ import {
     coopBtn,
     hideOverlay,
     showModeSelection,
+    showLevelIntro,
 } from "./ui.js";
 
 import { TARGET_FPS } from "../constants/constant.js";
 
-// ======================================
-// GAME SETTINGS
-// ======================================
-
 let animationFrameId = null;
-
 const timeStep = 1000 / TARGET_FPS;
-
 let lastTime = 0;
 let accumulator = 0;
 
@@ -47,7 +46,6 @@ function gameLoop(timestamp) {
 
     const deltaTime = timestamp - lastTime;
     lastTime = timestamp;
-
     accumulator += deltaTime;
 
     while (accumulator >= timeStep) {
@@ -71,14 +69,10 @@ function startGame(mode) {
 
     initGame(mode);
 
-    gameData.gameState = "PLAYING";
+    gameData.gameState = "PAUSED";
 
-    hideOverlay();
-
-    lastTime = performance.now();
-    accumulator = 0;
-
-    animationFrameId = requestAnimationFrame(gameLoop);
+    renderCanvas(gameData);
+    showLevelIntro(1);
 }
 
 // ======================================
@@ -98,6 +92,32 @@ function resumeGame() {
 }
 
 // ======================================
+// RETURN TO MODE SELECTION
+// ======================================
+
+function returnToModeSelection() {
+    cancelAnimationFrame(animationFrameId);
+
+    // Reset the selected level
+    switchLevel(0);
+
+    // Reset the map displayed on the canvas
+    gameData.map = map;
+
+    // Clear the previously selected game mode
+    gameData.gameMode = null;
+
+    // Reset the game state
+    gameData.gameState = "START";
+
+    // Redraw the first map
+    renderCanvas(gameData);
+
+    // Display the mode selection screen
+    showModeSelection();
+}
+
+// ======================================
 // ACTION BUTTON
 // ======================================
 
@@ -111,8 +131,7 @@ function handleActionButton() {
         gameData.gameState === "VICTORY" ||
         gameData.gameState === "GAMEOVER"
     ) {
-        gameData.gameState = "START";
-        showModeSelection();
+        returnToModeSelection();
     }
 }
 
@@ -122,7 +141,6 @@ function handleActionButton() {
 
 function initializeApplication() {
     resizeCanvas();
-
     setupCanvasEvents();
     setupControls();
 
@@ -142,7 +160,7 @@ function initializeApplication() {
 }
 
 // ======================================
-// DEBUGGING
+// DEBUG REFERENCES
 // ======================================
 
 window.ghostsDebug = ghosts;

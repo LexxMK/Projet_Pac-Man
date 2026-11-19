@@ -15,6 +15,14 @@ function setDirection(targetPlayer, dx, dy) {
 // ======================================
 
 function handleKeyDown(e) {
+
+    // PREVENT PAGE SCROLLING WITH ARROW KEYS
+    if (
+        ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.key)
+    ) {
+        e.preventDefault();
+    }
+
     switch (e.key.toLowerCase()) {
 
         // PLAYER 1 - WASD
